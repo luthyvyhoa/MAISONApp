@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31019.35
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MAISONApp", "MAISONApp.csproj", "{F94DB70A-EA06-4C8F-8B38-F5B617D84F39}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WSJob", "..\WSJob\WSJob.csproj", "{49988423-A4CF-42E8-8E9C-2A55C0D22757}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F94DB70A-EA06-4C8F-8B38-F5B617D84F39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F94DB70A-EA06-4C8F-8B38-F5B617D84F39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F94DB70A-EA06-4C8F-8B38-F5B617D84F39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F94DB70A-EA06-4C8F-8B38-F5B617D84F39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{49988423-A4CF-42E8-8E9C-2A55C0D22757}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{49988423-A4CF-42E8-8E9C-2A55C0D22757}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{49988423-A4CF-42E8-8E9C-2A55C0D22757}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{49988423-A4CF-42E8-8E9C-2A55C0D22757}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7D1B1098-12FD-4210-9F5A-5CAA47E9F6ED}
+	EndGlobalSection
+EndGlobal
