@@ -19,7 +19,7 @@ BEGIN
         Message = @Message
     WHERE Job = @Job
           AND Step = @Step
-          AND CONVERT(DATE, GETDATE()) = CONVERT(DATE, CreatedDate);
+          AND Status = 'P';
 
     UPDATE IMEX_JobTrackingProcess
     SET Status = 'F',
@@ -28,5 +28,5 @@ BEGIN
 		Message = @Message
     WHERE Job = @Job
           AND Step = @Step
-          AND CONVERT(DATE, GETDATE()) = CONVERT(DATE, CreatedDate);
+          AND Status = 'N';
 END;

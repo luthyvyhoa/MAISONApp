@@ -5,6 +5,7 @@ using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
@@ -24,12 +25,14 @@ namespace MAISONApp
         private int step;
         private int CmdTimeout;
         private int ProcessHandle;
+        private string FolderBK;
 
         public ThreadJob(int Job, int cmdTimeout, int processHandle)
         {
             job = Job;
             CmdTimeout = cmdTimeout;
             ProcessHandle = processHandle;
+            FolderBK = ConfigurationManager.AppSettings["FolderBK"];
             thread = new Thread(new ThreadStart(this.Run));
             thread.Start();
         }
@@ -267,13 +270,15 @@ namespace MAISONApp
         private void DataFlow(string sourceData, string sourceSQL, string destConn
             , string destData, string destSQL, int numOfCols)
         {
-            // delete table tmp
-            Utility.ExecuteNonQuery("TRUNCATE TABLE " + destData);
-
             // Scan folder file
+            // Copy file to Backup and delete file root
+            string folderBKSuccess = FolderBK + "Success";
+            string folderBKFail = FolderBK + "Fail";
+            if (!Directory.Exists(folderBKSuccess))
+                Directory.CreateDirectory(folderBKSuccess);
+            if (!Directory.Exists(folderBKFail))
+                Directory.CreateDirectory(folderBKFail);
             List<string> lstFile = Directory.GetFiles(sourceData, sourceSQL + "*.*", SearchOption.AllDirectories).ToList();
-            List<string> lstFileSuccess = new List<string>();
-            List<string> lstFileFail = new List<string>();
             foreach (string file in lstFile)
             {
                 try
@@ -281,7 +286,9 @@ namespace MAISONApp
                     // insert data to table tmp
                     DataTable dtSource = GetDataTabletFromCSVFile(file);
                     InsertDataIntoSQLServerUsingSQLBulkCopy(dtSource, destConn, destData);
-                    lstFileSuccess.Add(file);
+
+                    //delete and bk file
+                    File.Move(file, folderBKSuccess + "\\" + Path.GetFileName(file));
                 }
                 catch (Exception e)
                 {
@@ -297,12 +304,9 @@ namespace MAISONApp
                         "", "",
                         string.Format("IMEXApp fail at job {0} - step {1}", job, step),
                         e.Message.Replace('\'', ' '), "");
-                    lstFileFail.Add(file);
+                    File.Move(file, folderBKFail + "\\" + Path.GetFileName(file));
                 }
             }
-
-            // Copy file to Backup and delete file root
-
         }
 
         #endregion IMEX
@@ -598,7 +602,7 @@ namespace MAISONApp
                 using (TextFieldParser csvReader = new TextFieldParser(csv_file_path))
                 {
                     csvReader.SetDelimiters(new string[] { "\t" });
-                    csvReader.HasFieldsEnclosedInQuotes = true;
+                    csvReader.HasFieldsEnclosedInQuotes = false;
                     string[] colFields = csvReader.ReadFields();
                     foreach (string column in colFields)
                     {

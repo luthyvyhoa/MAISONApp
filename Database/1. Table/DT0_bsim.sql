@@ -1,4 +1,4 @@
-USE SAP
+USE MaisonDW
 IF NOT EXISTS
 (
     SELECT *

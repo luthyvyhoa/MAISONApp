@@ -3,11 +3,11 @@ IF NOT EXISTS
 (
     SELECT *
     FROM sys.objects
-    WHERE object_id = OBJECT_ID(N'TMP_DT0_vbrk')
+    WHERE object_id = OBJECT_ID(N'SAP_DT0_vbrk')
           AND type IN ( N'U' )
 )
 BEGIN
-    CREATE TABLE [dbo].[TMP_DT0_vbrk]
+    CREATE TABLE [dbo].[SAP_DT0_vbrk]
     (
         [ID] [INT] IDENTITY(1, 1) NOT NULL,
         VBELN [NVARCHAR](2000) NULL,
@@ -60,7 +60,7 @@ BEGIN
         BUPLA [NVARCHAR](2000) NULL,
         KNUMA [NVARCHAR](2000) NULL,
         LAND1 [NVARCHAR](2000) NULL
-            CONSTRAINT [PK_TMP_DT0_vbrk]
+            CONSTRAINT [PK_SAP_DT0_vbrk]
             PRIMARY KEY CLUSTERED ([ID] ASC)
             WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON,
                   ALLOW_PAGE_LOCKS = ON

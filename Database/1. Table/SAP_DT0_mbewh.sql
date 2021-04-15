@@ -3,11 +3,11 @@ IF NOT EXISTS
 (
     SELECT *
     FROM sys.objects
-    WHERE object_id = OBJECT_ID(N'TMP_DT0_mbewh')
+    WHERE object_id = OBJECT_ID(N'SAP_DT0_mbewh')
           AND type IN ( N'U' )
 )
 BEGIN
-    CREATE TABLE [dbo].[TMP_DT0_mbewh]
+    CREATE TABLE [dbo].[SAP_DT0_mbewh]
     (
         [ID] [INT] IDENTITY(1, 1) NOT NULL,
         MATNR [NVARCHAR](2000) NULL,
@@ -24,7 +24,7 @@ BEGIN
         BKLAS [NVARCHAR](2000) NULL,
         SALKV [NVARCHAR](2000) NULL,
         VKSAL [NVARCHAR](2000) NULL
-            CONSTRAINT [PK_TMP_DT0_mbewh]
+            CONSTRAINT [PK_SAP_DT0_mbewh]
             PRIMARY KEY CLUSTERED ([ID] ASC)
             WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON,
                   ALLOW_PAGE_LOCKS = ON

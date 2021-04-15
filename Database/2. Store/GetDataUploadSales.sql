@@ -1,11 +1,14 @@
-USE [CKDATA]
+﻿USE [CKDATA];
 GO
 
-IF EXISTS ( SELECT  *
-            FROM    sys.objects
-           WHERE   type = 'P'
-                   AND name = 'GetDataUploadSales' )
-   DROP PROCEDURE GetDataUploadSales;
+IF EXISTS
+(
+    SELECT *
+    FROM sys.objects
+    WHERE type = 'P'
+          AND name = 'GetDataUploadSales'
+)
+    DROP PROCEDURE GetDataUploadSales;
 GO
 CREATE PROCEDURE [dbo].[GetDataUploadSales]
 AS
@@ -28,49 +31,171 @@ BEGIN
                           ELSE
                               -7
                       END;
-    DECLARE @_ToDate DATETIME = DATEADD(DAY, @_DayAdd, GETDATE());
-    DECLARE @_FromDate DATETIME = DATEADD(DAY, -6, @_ToDate);
+    DECLARE @_ToDate DATETIME = CONVERT(DATE, DATEADD(DAY, @_DayAdd, GETDATE()));
+    DECLARE @_FromDate DATETIME = CONVERT(DATE, DATEADD(DAY, -6, @_ToDate));
+
+    SELECT XBLNR 'InvoiceNumber',
+           VBELN 'BillNumber'
+    INTO #tmpSAP_DT0_vbrk
+    FROM [10.8.1.38].MaisonDW.dbo.SAP_DT0_vbrk
+    WHERE CONVERT(DATE, FKDAT, 104)
+    BETWEEN @_FromDate AND @_ToDate;
+
+    SELECT p.VBELN 'BillNumber',
+           SUBSTRING(p.MATNR, PATINDEX('%[^0]%', p.MATNR + '.'), LEN(p.MATNR)) 'ItemNumber',
+           p.WERKS 'Warehouse',
+           ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(REPLACE(p.WAVWR, ',', ''), '.', '')), 0) 'UnitCost',
+           CONVERT(DATE, PRSDT, 104) 'PRSDT'
+    INTO #tmpSAP_DT0_vbrp
+    FROM [10.8.1.38].MaisonDW.dbo.SAP_DT0_vbrp p
+    WHERE CONVERT(DATE, PRSDT, 104)
+    BETWEEN @_FromDate AND @_ToDate;
+
+    SELECT rownum = ROW_NUMBER() OVER (PARTITION BY k.InvoiceNumber,
+                                                    p.ItemNumber,
+                                                    p.Warehouse
+                                       ORDER BY p.PRSDT DESC
+                                      ),
+           k.InvoiceNumber,
+           p.*
+    INTO #tmpSAP_DT0_Order
+    FROM #tmpSAP_DT0_vbrp p
+        JOIN #tmpSAP_DT0_vbrk k
+            ON k.BillNumber = p.BillNumber;
+
+    DELETE FROM #tmpSAP_DT0_Order
+    WHERE rownum <> 1;
 
     SELECT Company,
            ItemNumber,
            Warehouse,
            CreateDate,
            InvoiceNumber,
-           SUM(InvoiceQuantity) 'QtyOut',
-           SUM(LocalAmount / InvoiceQuantity / 1.1) 'UnitNetPriceOut'
-    INTO #tmpCashOrderTrn
-    FROM [10.8.1.123].ETPEASV55.dbo.CashOrderTrn
-    WHERE InvoiceType = 31
+           InvoiceQuantity,
+           InvoiceType,
+           LocalAmount
+    INTO #tmpCashOrderTrnTotal
+    FROM [10.8.1.38].ETPEASV55.dbo.CashOrderTrn
+    WHERE InvoiceType IN ( 31, 35 )
           AND CreateDate
           BETWEEN FORMAT(@_FromDate, 'yyyyMMdd') AND FORMAT(@_ToDate, 'yyyyMMdd')
+          AND
+          (
+              LotNumber IS NULL
+              OR LotNumber = ''
+          )
+          AND LocalAmount <> 0;
+
+    SELECT Company,
+           Warehouse,
+           CreateDate,
+           InvoiceNumber,
+           SUM(LocalAmount) 'TotalLocalAmount'
+    INTO #tmpCashOrderTrnTotalSum
+    FROM #tmpCashOrderTrnTotal
+    WHERE InvoiceType = 31
     GROUP BY Company,
-             ItemNumber,
              Warehouse,
              CreateDate,
              InvoiceNumber;
 
+    SELECT CashOrderTrn.Company,
+           CashOrderTrn.ItemNumber,
+           CashOrderTrn.Warehouse,
+           CashOrderTrn.CreateDate,
+           CashOrderTrn.InvoiceNumber,
+           SUM(CashOrderTrn.InvoiceQuantity) 'QtyOut',
+           SUM((CashOrderTrn.LocalAmount
+                - (CashOrderTrn.LocalAmount / ts.TotalLocalAmount * ISNULL(dis.LocalAmount, 0))
+               )
+               / CashOrderTrn.InvoiceQuantity / 1.1
+              ) 'UnitNetPriceOut'
+    INTO #tmpCashOrderTrn
+    FROM #tmpCashOrderTrnTotal CashOrderTrn
+        LEFT JOIN #tmpCashOrderTrnTotal dis
+            ON dis.Company = CashOrderTrn.Company
+               AND dis.InvoiceNumber = CashOrderTrn.InvoiceNumber
+               AND dis.Warehouse = CashOrderTrn.Warehouse
+               AND dis.CreateDate = CashOrderTrn.CreateDate
+               AND dis.InvoiceType = 35
+        JOIN #tmpCashOrderTrnTotalSum ts
+            ON ts.Company = CashOrderTrn.Company
+               AND ts.CreateDate = CashOrderTrn.CreateDate
+               AND ts.InvoiceNumber = CashOrderTrn.InvoiceNumber
+    WHERE CashOrderTrn.InvoiceType = 31
+    GROUP BY CashOrderTrn.Company,
+             CashOrderTrn.ItemNumber,
+             CashOrderTrn.Warehouse,
+             CashOrderTrn.CreateDate,
+             CashOrderTrn.InvoiceNumber,
+             ts.TotalLocalAmount,
+             dis.LocalAmount;
+
     SELECT Company,
-           ReturnItemNumber 'ItemNumber',
+           ReturnItemNumber,
            Warehouse,
            CreateDate,
            SalesReturnNumber,
-           SUM(ReturnQuantity) 'QtyIn',
-           SUM(LocalAmount / ReturnQuantity / 1.1) 'UnitNetPriceIn'
-    INTO #tmpSalesReturnTrn
-    FROM [10.8.1.123].ETPEASV55.dbo.SalesReturnTrn
-    WHERE InvoiceType = 31
+           ReturnQuantity,
+           InvoiceType,
+           LocalAmount
+    INTO #tmpSalesReturnTrnTotal
+    FROM [10.8.1.38].ETPEASV55.dbo.SalesReturnTrn
+    WHERE InvoiceType IN ( 31, 35 )
           AND CreateDate
           BETWEEN FORMAT(@_FromDate, 'yyyyMMdd') AND FORMAT(@_ToDate, 'yyyyMMdd')
+          AND LocalAmount <> 0;
+
+    SELECT Company,
+           Warehouse,
+           CreateDate,
+           SalesReturnNumber,
+           SUM(LocalAmount) 'TotalLocalAmount'
+    INTO #tmpSalesReturnTrnTotalSum
+    FROM #tmpSalesReturnTrnTotal
+    WHERE InvoiceType = 31
     GROUP BY Company,
-             ReturnItemNumber,
              Warehouse,
              CreateDate,
              SalesReturnNumber;
 
+    SELECT SalesReturnTrn.Company,
+           SalesReturnTrn.ReturnItemNumber,
+           SalesReturnTrn.Warehouse,
+           SalesReturnTrn.CreateDate,
+           SalesReturnTrn.SalesReturnNumber,
+           SUM(SalesReturnTrn.ReturnQuantity) 'QtyIn',
+           SUM((SalesReturnTrn.LocalAmount
+                - (SalesReturnTrn.LocalAmount / ts.TotalLocalAmount * ISNULL(dis.LocalAmount, 0))
+               )
+               / SalesReturnTrn.ReturnQuantity / 1.1
+              ) 'UnitNetPriceIn'
+    INTO #tmpSalesReturnTrn
+    FROM #tmpSalesReturnTrnTotal SalesReturnTrn
+        LEFT JOIN #tmpSalesReturnTrnTotal dis
+            ON dis.Company = SalesReturnTrn.Company
+               AND dis.SalesReturnNumber = SalesReturnTrn.SalesReturnNumber
+               AND dis.Warehouse = SalesReturnTrn.Warehouse
+               AND dis.CreateDate = SalesReturnTrn.CreateDate
+               AND dis.InvoiceType = 35
+        JOIN #tmpSalesReturnTrnTotalSum ts
+            ON ts.Company = SalesReturnTrn.Company
+               AND ts.CreateDate = SalesReturnTrn.CreateDate
+               AND ts.SalesReturnNumber = SalesReturnTrn.SalesReturnNumber
+    WHERE SalesReturnTrn.InvoiceType = 31
+    GROUP BY SalesReturnTrn.Company,
+             SalesReturnTrn.ReturnItemNumber,
+             SalesReturnTrn.Warehouse,
+             SalesReturnTrn.CreateDate,
+             SalesReturnTrn.SalesReturnNumber,
+             ts.TotalLocalAmount,
+             dis.LocalAmount;
+
     SELECT rownum = ROW_NUMBER() OVER (PARTITION BY spl.Company,
                                                     spl.ItemNumber,
                                                     spl.Entitycode1
-                                       ORDER BY ValidFrom DESC,
+                                       ORDER BY spl.SalesCampaign,
+                                                ValidFrom DESC,
                                                 CreateDate DESC,
                                                 CreateTime DESC
                                       ),
@@ -81,7 +206,8 @@ BEGIN
            spl.CreateDate,
            spl.SalesPrice
     INTO #tmpSalesPriceList
-    FROM [10.8.1.123].ETPEASV55.dbo.SalesPriceList spl;
+    FROM [10.8.1.38].ETPEASV55.dbo.SalesPriceList spl
+    WHERE spl.ValidFrom <= FORMAT(@_ToDate, 'yyyyMMdd');
 
     DELETE FROM #tmpSalesPriceList
     WHERE rownum <> 1;
@@ -94,7 +220,7 @@ BEGIN
            spl.ItemNumber,
            spl.AliasNumber
     INTO #tmpAliasNumber
-    FROM [10.8.1.123].ETPEASV55.dbo.AliasNumber spl;
+    FROM [10.8.1.38].ETPEASV55.dbo.AliasNumber spl;
 
     DELETE FROM #tmpAliasNumber
     WHERE rownum <> 1;
@@ -108,7 +234,7 @@ BEGIN
            spl.ItemNumber,
            spl.Warehouse
     INTO #tmpProductLocationBalance
-    FROM [10.8.1.123].ETPEASV55.dbo.ProductLocationBalance spl;
+    FROM [10.8.1.38].ETPEASV55.dbo.ProductLocationBalance spl;
 
     DELETE FROM #tmpProductLocationBalance
     WHERE rownum <> 1;
@@ -123,7 +249,8 @@ BEGIN
            spl.DimensionX,
            spl.DimensionY
     INTO #tmpProductRSF
-    FROM [10.8.1.123].ETPEASV55.dbo.ProductRSF spl;
+    FROM [10.8.1.38].ETPEASV55.dbo.ProductRSF spl
+    WHERE spl.BusinessArea = '10';
 
     DELETE FROM #tmpProductRSF
     WHERE rownum <> 1;
@@ -164,32 +291,31 @@ BEGIN
            pr.SalesCampaign,
            pr.SalesPrice,
            an.AliasNumber,
-           cs.ShopNo
+           LTRIM(RTRIM(cs.ShopNo)) 'ShopNo'
     INTO #tmpResult3
     FROM #tmpResult2 pr
         JOIN dbo.CK_Store cs
-            ON cs.StoreCode = pr.Warehouse
+            ON cs.StoreCode LIKE '%' + pr.Warehouse + '%'
         LEFT JOIN #tmpAliasNumber an
             ON pr.ItemNumber = an.ItemNumber
                AND pr.Company = an.Company;
 
-    SELECT DISTINCT
-           'Vietnam' AS 'Country',
+    SELECT 'Vietnam' AS 'Country',
            FORMAT(CONVERT(DATE, CONVERT(NVARCHAR, co.CreateDate), 112), 'yyyy/MM/dd') AS 'Date',
            pr.ShopNo AS 'Location',
            pr.Specification1 'Stylecode',
            pr.DimensionX 'Color',
            pr.DimensionY 'Size',
            pr.AliasNumber 'Barcode',
-           InvoiceQuantity = CAST(ISNULL(co.QtyOut, 0) AS NUMERIC(36, 2)),
-           '' AS 'UnitCost',
+           InvoiceQuantity = CAST(ISNULL(co.QtyOut, 0) AS NUMERIC(36, 0)),
+           p.UnitCost,
            Grossprice = CASE
                             WHEN pr.SalesCampaign = 'N' THEN
-                                CAST(ROUND(pr.SalesPrice / 1.1, 2) AS NUMERIC(36, 2))
+                                CAST(ROUND(pr.SalesPrice / 1.1, 0) AS NUMERIC(36, 0))
                             ELSE
-                                CAST(pr.SalesPrice AS NUMERIC(36, 2))
+                                CAST(pr.SalesPrice AS NUMERIC(36, 0))
                         END,
-           NetPrice = CAST(ISNULL(co.UnitNetPriceOut, 0) AS NUMERIC(36, 2)),
+           NetPrice = CAST(ISNULL(co.UnitNetPriceOut, 0) AS NUMERIC(36, 0)),
            '' AS 'NetSGD',
            co.InvoiceNumber 'TranNo',
            '' AS 'staffcode'
@@ -198,36 +324,56 @@ BEGIN
             ON co.Company = pr.Company
                AND co.ItemNumber = pr.ItemNumber
                AND co.Warehouse = pr.Warehouse
+        JOIN #tmpSAP_DT0_Order p
+            ON p.ItemNumber = co.ItemNumber
+               AND co.Warehouse = p.Warehouse
+               AND co.InvoiceNumber = p.InvoiceNumber
+    --WHERE pr.ItemNumber = '100152974001'
+    --      AND pr.Warehouse = '99M1'
+    --      AND co.InvoiceNumber = '161074751'
     UNION
-    SELECT DISTINCT
-           'Vietnam' AS 'Country',
+    SELECT 'Vietnam' AS 'Country',
            FORMAT(CONVERT(DATE, CONVERT(NVARCHAR, sr.CreateDate), 112), 'yyyy/MM/dd') AS 'Date',
            pr.ShopNo AS 'Location',
            pr.Specification1 'Stylecode',
            pr.DimensionX 'Color',
            pr.DimensionY 'Size',
            pr.AliasNumber 'Barcode',
-           InvoiceQuantity = CAST(0 - ISNULL(sr.QtyIn, 0) AS NUMERIC(36, 2)),
-           '' AS 'UnitCost',
+           InvoiceQuantity = CAST(0 - ISNULL(sr.QtyIn, 0) AS NUMERIC(36, 0)),
+           p.UnitCost,
            Grossprice = CASE
                             WHEN pr.SalesCampaign = 'N' THEN
-                                CAST(ROUND(pr.SalesPrice / 1.1, 2) AS NUMERIC(36, 2))
+                                CAST(ROUND(pr.SalesPrice / 1.1, 0) AS NUMERIC(36, 0))
                             ELSE
-                                CAST(pr.SalesPrice AS NUMERIC(36, 2))
+                                CAST(pr.SalesPrice AS NUMERIC(36, 0))
                         END,
-           NetPrice = CAST(ISNULL(sr.UnitNetPriceIn, 0) AS NUMERIC(36, 2)),
+           NetPrice = CAST(ISNULL(sr.UnitNetPriceIn, 0) AS NUMERIC(36, 0)),
            '' AS 'NetSGD',
            sr.SalesReturnNumber 'TranNo',
            '' AS 'staffcode'
     FROM #tmpResult3 pr
         JOIN #tmpSalesReturnTrn sr
             ON sr.Company = pr.Company
-               AND sr.ItemNumber = pr.ItemNumber
-               AND sr.Warehouse = pr.Warehouse;
+               AND sr.ReturnItemNumber = pr.ItemNumber
+               AND sr.Warehouse = pr.Warehouse
+        JOIN #tmpSAP_DT0_Order p
+            ON p.ItemNumber = pr.ItemNumber
+               AND pr.Warehouse = p.Warehouse
+               AND sr.SalesReturnNumber = p.InvoiceNumber;
+    --WHERE pr.ItemNumber = '100152974001'
+    --      AND pr.Warehouse = '99M1'
+    --      AND sr.SalesReturnNumber = '';
 
-    DROP TABLE #tmpSalesPriceList;
+    DROP TABLE #tmpSAP_DT0_vbrk;
+    DROP TABLE #tmpSAP_DT0_vbrp;
+    DROP TABLE #tmpSAP_DT0_Order;
+    DROP TABLE #tmpCashOrderTrnTotal;
+    DROP TABLE #tmpCashOrderTrnTotalSum;
     DROP TABLE #tmpCashOrderTrn;
+    DROP TABLE #tmpSalesReturnTrnTotal;
+    DROP TABLE #tmpSalesReturnTrnTotalSum;
     DROP TABLE #tmpSalesReturnTrn;
+    DROP TABLE #tmpSalesPriceList;
     DROP TABLE #tmpAliasNumber;
     DROP TABLE #tmpProductLocationBalance;
     DROP TABLE #tmpProductRSF;

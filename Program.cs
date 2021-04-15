@@ -18,18 +18,24 @@ namespace MAISONApp
     {
         private static void Main(string[] args)
         {
-            int CmdTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["CmdTimeout"]);
-            if (args == null || args.Length == 0)
+            do
             {
-                Console.Write("Enter Job: ");
-                args = new string[10];
-                args[0] = Console.ReadLine().ToString();
+                int CmdTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["CmdTimeout"]);
+                if (args == null || args.Length == 0)
+                {
+                    Console.Write("Enter Job: ");
+                    args = new string[10];
+                    args[0] = Console.ReadLine().ToString();
+                }
+                if (args != null && args.Length > 0)
+                {
+                    int job = Convert.ToInt32(args[0]);
+                    new ThreadJob(job, CmdTimeout, 1);
+                }
+                args = null;
+                Console.WriteLine("Press <Enter> to continue and <ESC> to exit... ");
             }
-            if (args != null && args.Length > 0)
-            {
-                int job = Convert.ToInt32(args[0]);
-                new ThreadJob(job, CmdTimeout, 1);
-            }
+            while (Console.ReadKey().Key == ConsoleKey.Enter);
         }
     }
 }
