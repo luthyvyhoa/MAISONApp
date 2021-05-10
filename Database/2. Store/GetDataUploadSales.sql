@@ -327,7 +327,7 @@ BEGIN
         JOIN #tmpSAP_DT0_Order p
             ON p.ItemNumber = co.ItemNumber
                AND co.Warehouse = p.Warehouse
-               AND co.InvoiceNumber = p.InvoiceNumber
+               AND CONVERT(NVARCHAR(2000), co.InvoiceNumber) = p.InvoiceNumber
     --WHERE pr.ItemNumber = '100152974001'
     --      AND pr.Warehouse = '99M1'
     --      AND co.InvoiceNumber = '161074751'
@@ -359,7 +359,7 @@ BEGIN
         JOIN #tmpSAP_DT0_Order p
             ON p.ItemNumber = pr.ItemNumber
                AND pr.Warehouse = p.Warehouse
-               AND sr.SalesReturnNumber = p.InvoiceNumber;
+               AND CONVERT(NVARCHAR(2000), sr.SalesReturnNumber) = p.InvoiceNumber;
     --WHERE pr.ItemNumber = '100152974001'
     --      AND pr.Warehouse = '99M1'
     --      AND sr.SalesReturnNumber = '';

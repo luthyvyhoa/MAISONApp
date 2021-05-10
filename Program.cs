@@ -18,7 +18,7 @@ namespace MAISONApp
     {
         private static void Main(string[] args)
         {
-            do
+            try
             {
                 int CmdTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["CmdTimeout"]);
                 if (args == null || args.Length == 0)
@@ -32,10 +32,12 @@ namespace MAISONApp
                     int job = Convert.ToInt32(args[0]);
                     new ThreadJob(job, CmdTimeout, 1);
                 }
-                args = null;
-                Console.WriteLine("Press <Enter> to continue and <ESC> to exit... ");
             }
-            while (Console.ReadKey().Key == ConsoleKey.Enter);
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+
         }
     }
 }

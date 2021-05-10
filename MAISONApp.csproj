@@ -14,6 +14,7 @@
     <PackageReference Include="System.Data.OleDb" Version="5.0.0" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.2" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="5.0.0" />
+    <PackageReference Include="WinSCP" Version="5.17.10" />
   </ItemGroup>
 
   <ItemGroup>

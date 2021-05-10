@@ -1,0 +1,37 @@
+USE MaisonDW
+IF NOT EXISTS
+(
+    SELECT *
+    FROM sys.objects
+    WHERE object_id = OBJECT_ID(N'USE_DT0_mbewh')
+          AND type IN ( N'U' )
+)
+BEGIN
+    CREATE TABLE [dbo].[USE_DT0_mbewh]
+    (
+        [ID] [INT] IDENTITY(1, 1) NOT NULL,
+        MATNR [NVARCHAR](2000) NULL,
+        BWKEY [NVARCHAR](2000) NULL,
+        BWTAR [NVARCHAR](2000) NULL,
+        LFGJA [NVARCHAR](2000) NULL,
+        LFMON [NVARCHAR](2000) NULL,
+        LBKUM [NVARCHAR](2000) NULL,
+        SALK3 [NVARCHAR](2000) NULL,
+        VPRSV [NVARCHAR](2000) NULL,
+        VERPR [NVARCHAR](2000) NULL,
+        STPRS [NVARCHAR](2000) NULL,
+        PEINH [NVARCHAR](2000) NULL,
+        BKLAS [NVARCHAR](2000) NULL,
+        SALKV [NVARCHAR](2000) NULL,
+        VKSAL [NVARCHAR](2000) NULL
+            CONSTRAINT [PK_USE_DT0_mbewh]
+            PRIMARY KEY CLUSTERED ([ID] ASC)
+            WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON,
+                  ALLOW_PAGE_LOCKS = ON
+                 ) ON [PRIMARY]
+    ) ON [PRIMARY];
+END;
+
+GO
+SET ANSI_PADDING OFF;
+GO

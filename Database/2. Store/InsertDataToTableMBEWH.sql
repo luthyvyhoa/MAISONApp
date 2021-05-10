@@ -9,19 +9,15 @@ IF EXISTS
 GO
 CREATE PROCEDURE [dbo].[InsertDataToTableMBEWH]
 AS
-BEGIN
+BEGIN;
 
-    DECLARE @_Month INT;
-    DECLARE @_Year INT;
-
-    SELECT @_Month = MAX(mbe.LFMON),
-           @_Year = MAX(mbe.LFGJA)
-    FROM dbo.TMP_DT0_mbewh mbe;
-
-    DELETE mbe
-    FROM dbo.SAP_DT0_mbewh mbe
-    WHERE mbe.LFGJA = @_Year
-          AND mbe.LFMON = @_Month;
+    DELETE u
+    FROM dbo.SAP_DT0_mbewh u
+        JOIN dbo.TMP_DT0_mbewh t
+            ON t.MATNR = u.MATNR
+               AND t.BWKEY = u.BWKEY
+               AND t.LFGJA = u.LFGJA
+               AND t.LFMON = u.LFMON;
 
     INSERT INTO dbo.SAP_DT0_mbewh
     (
@@ -56,5 +52,5 @@ BEGIN
            VKSAL
     FROM dbo.TMP_DT0_mbewh;
 
-	TRUNCATE TABLE dbo.TMP_DT0_mbewh
+    TRUNCATE TABLE dbo.TMP_DT0_mbewh;
 END;

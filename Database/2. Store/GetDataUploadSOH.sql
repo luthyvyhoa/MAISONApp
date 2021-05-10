@@ -31,63 +31,71 @@ BEGIN
                           ELSE
                               -7
                       END;
-    DECLARE @_ToDate DATETIME = DATEADD(DAY, @_DayAdd, GETDATE());
-    DECLARE @_FromDate DATETIME = DATEADD(DAY, -6, @_ToDate);
+    DECLARE @_ToDate DATETIME = CONVERT(DATE, DATEADD(DAY, @_DayAdd, GETDATE()));
     DECLARE @_LastDayOfLastMonth DATETIME = CONVERT(DATE, DATEADD(d, - (DAY(GETDATE())), GETDATE()));
     DECLARE @_FirstDayOfMonth DATETIME = CONVERT(DATE, DATEADD(d, - (DAY(GETDATE() - 1)), GETDATE()));
-    DECLARE @_LastDayOfMonth DATETIME
-        = CONVERT(DATE, DATEADD(d, - (DAY(DATEADD(m, 1, GETDATE()))), DATEADD(m, 1, GETDATE())));
+
+    SELECT SUBSTRING(sim.MATNR, PATINDEX('%[^0]%', sim.MATNR + '.'), LEN(sim.MATNR)) 'ItemNumber',
+           sim.WERKS 'Warehouse',
+		   cs.ShopNo 'StoreName',
+           SUM(   CASE
+                      WHEN sim.SHKZG = 'H' THEN
+                          -1
+                      ELSE
+                          1
+                  END
+                  * ISNULL(
+                              TRY_CONVERT(NUMERIC(38, 0), REPLACE(
+                                                                     REPLACE(REPLACE(sim.DMBTR, ',', ''), '.', ''),
+                                                                     '-',
+                                                                     ''
+                                                                 )),
+                              0
+                          )
+              ) 'ValueClose',
+           SUM(   CASE
+                      WHEN sim.SHKZG = 'H' THEN
+                          -1
+                      ELSE
+                          1
+                  END * ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(sim.MENGE, ',', '')), 0)
+              ) 'QtyClose'
+    INTO #tmpSAP_DT0_bsim
+    FROM [10.8.1.38].MaisonDW.dbo.SAP_DT0_mseg sim
+        JOIN dbo.CK_Store cs
+            ON cs.StoreCode = sim.WERKS
+               AND cs.Active = 1
+    WHERE CONVERT(DATE, sim.HSDAT, 104)
+    BETWEEN @_FirstDayOfMonth AND @_ToDate
+    GROUP BY sim.MATNR,
+             sim.WERKS,
+			 cs.ShopNo;
 
     SELECT SUBSTRING(mbe.MATNR, PATINDEX('%[^0]%', mbe.MATNR + '.'), LEN(mbe.MATNR)) 'ItemNumber',
            mbe.BWKEY 'Warehouse',
-           ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(REPLACE(mbe.SALK3, ',', ''), '.', '')), 0) 'ValueTotal',
-           ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(mbe.LBKUM, ',', '')), 0) 'QtyTotal'
-    INTO #tmpSAP_DT0_mbewh
-    FROM [10.8.1.38].MaisonDW.dbo.SAP_DT0_mbewh mbe
-    WHERE YEAR(@_LastDayOfLastMonth) = mbe.LFGJA
-          AND MONTH(@_LastDayOfLastMonth) = mbe.LFMON;
-
-    SELECT SUBSTRING(sim.MATNR, PATINDEX('%[^0]%', sim.MATNR + '.'), LEN(sim.MATNR)) 'ItemNumber',
-           sim.BWKEY 'Warehouse',
-           SUM(ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(REPLACE(sim.DMBTR, ',', ''), '.', '')), 0)) 'ValueClose',
-           SUM(ISNULL(TRY_CONVERT(NUMERIC(38, 0), REPLACE(sim.MENGE, ',', '')), 0)) 'QtyClose'
-    INTO #tmpSAP_DT0_bsim
-    FROM [10.8.1.38].MaisonDW.dbo.SAP_DT0_bsim sim
-    WHERE CONVERT(DATE, sim.BUDAT, 104)
-          BETWEEN @_FirstDayOfMonth AND @_LastDayOfMonth
-          OR CONVERT(DATE, sim.BLDAT, 104)
-          BETWEEN @_FirstDayOfMonth AND @_LastDayOfMonth
-    GROUP BY sim.MATNR,
-             sim.BWKEY;
-
-    SELECT *
-    INTO #tmpOrderTrn
-    FROM
-    (
-        SELECT Company,
-               ItemNumber,
-               Warehouse
-        FROM [10.8.1.38].ETPEASV55.dbo.CashOrderTrn
-        WHERE CreateDate
-              BETWEEN FORMAT(@_FromDate, 'yyyyMMdd') AND FORMAT(@_ToDate, 'yyyyMMdd')
-              AND
-              (
-                  LotNumber IS NULL
-                  OR LotNumber = ''
-              )
-              AND LocalAmount <> 0
-        UNION
-        SELECT Company,
-               ReturnItemNumber 'ItemNumber',
-               Warehouse
-        FROM [10.8.1.38].ETPEASV55.dbo.SalesReturnTrn
-        WHERE CreateDate
-              BETWEEN FORMAT(@_FromDate, 'yyyyMMdd') AND FORMAT(@_ToDate, 'yyyyMMdd')
-              AND LocalAmount <> 0
-    ) abc
-    WHERE abc.ItemNumber <> ''
-          AND abc.ItemNumber IS NOT NULL
-          AND abc.Warehouse IS NOT NULL;
+		   cs.ShopNo 'StoreName',
+           ISNULL(
+                     CASE
+                         WHEN CHARINDEX('-', mbe.SALK3) > 0 THEN
+                             -1
+                         ELSE
+                             1
+                     END * TRY_CONVERT(NUMERIC(38, 0), REPLACE(REPLACE(REPLACE(mbe.SALK3, ',', ''), '.', ''), '-', '')),
+                     0
+                 ) 'ValueTotal',
+           ISNULL(   CASE
+                         WHEN CHARINDEX('-', mbe.LBKUM) > 0 THEN
+                             -1
+                         ELSE
+                             1
+                     END * TRY_CONVERT(NUMERIC(38, 0), REPLACE(REPLACE(mbe.LBKUM, ',', ''), '-', '')),
+                     0
+                 ) 'QtyTotal'
+    INTO #tmpUSE_DT0_mbewh
+    FROM [10.8.1.38].MaisonDW.dbo.USE_DT0_mbewh mbe
+        JOIN dbo.CK_Store cs
+            ON cs.StoreCode = mbe.BWKEY
+               AND cs.Active = 1;
 
     SELECT rownum = ROW_NUMBER() OVER (PARTITION BY spl.Company,
                                                     spl.ItemNumber,
@@ -102,10 +110,30 @@ BEGIN
            spl.Entitycode1,
            spl.SalesCampaign,
            spl.CreateDate,
-           spl.SalesPrice
+           spl.SalesPrice,
+           spl.ValidFrom,
+           spl.CreateTime
     INTO #tmpSalesPriceList
     FROM [10.8.1.38].ETPEASV55.dbo.SalesPriceList spl
     WHERE spl.ValidFrom <= FORMAT(GETDATE(), 'yyyyMMdd');
+
+    DELETE FROM #tmpSalesPriceList
+    WHERE rownum <> 1;
+
+    SELECT rownum = ROW_NUMBER() OVER (PARTITION BY spl.Company,
+                                                    spl.ItemNumber
+                                       ORDER BY spl.SalesCampaign,
+                                                ValidFrom DESC,
+                                                CreateDate DESC,
+                                                CreateTime DESC
+                                      ),
+           spl.Company,
+           spl.ItemNumber,
+           spl.SalesCampaign,
+           spl.CreateDate,
+           spl.SalesPrice
+    INTO #tmpSalesPriceListMini
+    FROM #tmpSalesPriceList spl;
 
     DELETE FROM #tmpSalesPriceList
     WHERE rownum <> 1;
@@ -123,20 +151,20 @@ BEGIN
     DELETE FROM #tmpAliasNumber
     WHERE rownum <> 1;
 
-    SELECT rownum = ROW_NUMBER() OVER (PARTITION BY spl.Company,
-                                                    spl.ItemNumber,
-                                                    spl.Warehouse
-                                       ORDER BY spl.CreateDate DESC
-                                      ),
-           spl.Company,
-           spl.ItemNumber,
-           spl.Warehouse,
-           spl.BalanceApproved
+    SELECT *
     INTO #tmpProductLocationBalance
-    FROM [10.8.1.38].ETPEASV55.dbo.ProductLocationBalance spl;
-
-    DELETE FROM #tmpProductLocationBalance
-    WHERE rownum <> 1;
+    FROM
+    (
+        SELECT Warehouse,
+               ItemNumber,
+			   StoreName
+        FROM #tmpSAP_DT0_bsim
+        UNION
+        SELECT Warehouse,
+               ItemNumber,
+			   StoreName
+        FROM #tmpUSE_DT0_mbewh
+    ) abc;
 
     SELECT rownum = ROW_NUMBER() OVER (PARTITION BY spl.Company,
                                                     spl.ItemNumber
@@ -156,65 +184,57 @@ BEGIN
            pr.ItemNumber,
            pr.Specification1,
            plb.Warehouse,
-           plb.BalanceApproved
+           plb.StoreName
     INTO #tmpResult1
     FROM #tmpProductRSF pr
         JOIN #tmpProductLocationBalance plb
-            ON plb.ItemNumber = pr.ItemNumber
-               AND plb.Company = pr.Company;
+            ON plb.ItemNumber = pr.ItemNumber;
 
     SELECT pr.Company,
            pr.ItemNumber,
            pr.Specification1,
            pr.Warehouse,
-           pr.BalanceApproved
-    INTO #tmpResult11
-    FROM #tmpResult1 pr
-        LEFT JOIN #tmpOrderTrn ot
-            ON ot.ItemNumber = pr.ItemNumber
-               AND ot.Company = pr.Company
-               AND ot.Warehouse = pr.Warehouse
-    WHERE CAST(pr.BalanceApproved AS NUMERIC(36, 2)) > 0
-          OR ot.Company IS NOT NULL;
-
-    SELECT pr.Company,
-           pr.ItemNumber,
-           pr.Specification1,
-           pr.Warehouse,
-           pr.BalanceApproved,
-           CAST((sim.ValueClose + mbe.ValueTotal) / (sim.QtyClose + mbe.QtyTotal) AS NUMERIC(36, 0)) 'UnitLandedCost'
+           pr.StoreName,
+           CAST((ISNULL(sim.ValueClose, 0) + ISNULL(mbe.ValueTotal, 0))
+                / (ISNULL(sim.QtyClose, 0) + ISNULL(mbe.QtyTotal, 0)) AS NUMERIC(36, 0)) 'UnitLandedCost',
+           (ISNULL(sim.QtyClose, 0) + ISNULL(mbe.QtyTotal, 0)) AS 'OnHandQty'
     INTO #tmpResult2
-    FROM #tmpResult11 pr
+    FROM #tmpResult1 pr
         LEFT JOIN #tmpSAP_DT0_bsim sim
             ON sim.ItemNumber = pr.ItemNumber
                AND pr.Warehouse = sim.Warehouse
-        LEFT JOIN #tmpSAP_DT0_mbewh mbe
+        LEFT JOIN #tmpUSE_DT0_mbewh mbe
             ON mbe.ItemNumber = pr.ItemNumber
-               AND pr.Warehouse = mbe.Warehouse;
+               AND pr.Warehouse = mbe.Warehouse
+    WHERE ISNULL(sim.QtyClose, 0) + ISNULL(mbe.QtyTotal, 0) > 0;
 
     SELECT pr.Company,
            pr.ItemNumber,
            pr.Specification1,
            pr.Warehouse,
-           spl.SalesCampaign,
-           spl.SalesPrice,
-           pr.BalanceApproved,
-           pr.UnitLandedCost
+           ISNULL(spl.SalesCampaign, splMini.SalesCampaign) 'SalesCampaign',
+           ISNULL(spl.SalesPrice, splMini.SalesPrice) 'SalesPrice',
+           pr.UnitLandedCost,
+           pr.StoreName,
+           pr.OnHandQty
     INTO #tmpResult3
     FROM #tmpResult2 pr
-        JOIN #tmpSalesPriceList spl
+        LEFT JOIN #tmpSalesPriceList spl
             ON pr.ItemNumber = spl.ItemNumber
                AND pr.Company = spl.Company
-               AND spl.Entitycode1 = pr.Warehouse;
+               AND spl.Entitycode1 = pr.Warehouse
+        LEFT JOIN #tmpSalesPriceListMini splMini
+            ON pr.ItemNumber = splMini.ItemNumber
+               AND pr.Company = splMini.Company;
 
     SELECT DISTINCT
            'Vietnam' AS 'Country',
            FORMAT(GETDATE(), 'yyyy/MM/dd') AS 'Date',
-           cs.ShopNo AS 'StoreName',
+           pr.StoreName,
            pr.Specification1 'ArticleNo',
            an.AliasNumber 'Barcode',
            '' AS 'Batch',
-           CAST(pr.BalanceApproved AS NUMERIC(36, 2)) 'OnHandQty',
+           CAST(pr.OnHandQty AS NUMERIC(36, 2)) 'OnHandQty',
            pr.UnitLandedCost,
            UnitGrossPrice = CASE
                                 WHEN pr.SalesCampaign = 'N' THEN
@@ -224,21 +244,23 @@ BEGIN
                             END,
            CAST(ROUND(pr.SalesPrice / 1.1, 2) AS NUMERIC(36, 2)) AS 'UnitNetPrice'
     FROM #tmpResult3 pr
-        JOIN dbo.CK_Store cs
-            ON cs.StoreCode = pr.Warehouse
         LEFT JOIN #tmpAliasNumber an
             ON pr.ItemNumber = an.ItemNumber
-               AND pr.Company = an.Company;
+               AND pr.Company = an.Company
+    WHERE pr.Warehouse = '1021'
+          AND an.ItemNumber = '100115585002';
+    SELECT *
+    FROM #tmpProductRSF
+    WHERE Warehouse = 'D111';
 
     DROP TABLE #tmpSAP_DT0_bsim;
-    DROP TABLE #tmpSAP_DT0_mbewh;
-    DROP TABLE #tmpOrderTrn;
+    DROP TABLE #tmpUSE_DT0_mbewh;
     DROP TABLE #tmpSalesPriceList;
+    DROP TABLE #tmpSalesPriceListMini;
     DROP TABLE #tmpAliasNumber;
     DROP TABLE #tmpProductLocationBalance;
     DROP TABLE #tmpProductRSF;
     DROP TABLE #tmpResult1;
-    DROP TABLE #tmpResult11;
     DROP TABLE #tmpResult2;
     DROP TABLE #tmpResult3;
 

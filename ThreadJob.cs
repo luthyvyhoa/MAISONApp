@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
+using WinSCP;
 using SearchOption = System.IO.SearchOption;
 
 namespace MAISONApp
@@ -149,35 +150,234 @@ namespace MAISONApp
 
             foreach (DataRow reader in ds.Tables[0].Rows)
             {
-                Ftp(reader["Url"].ToString(), reader["UserName"].ToString()
-                    , reader["Password"].ToString(), reader["FtpPath"].ToString()
-                        , reader["LocalPath"].ToString(), Convert.ToBoolean(reader["IsUpload"]));
+                if (string.IsNullOrEmpty(reader["Fingerprint"].ToString()))
+                {
+                    Ftp(reader["Url"].ToString(), reader["UserName"].ToString()
+                        , reader["Password"].ToString(), reader["FtpPath"].ToString()
+                            , reader["LocalPath"].ToString(), Convert.ToBoolean(reader["IsUpload"])
+                                , Convert.ToBoolean(reader["IsAllFile"]), Convert.ToBoolean(reader["IsDelete"]));
+                }
+                else
+                {
+                    Sftp(reader["Url"].ToString(), reader["UserName"].ToString()
+                        , reader["Password"].ToString(), reader["FtpPath"].ToString()
+                            , reader["LocalPath"].ToString(), Convert.ToBoolean(reader["IsUpload"])
+                                , reader["Fingerprint"].ToString(), Convert.ToInt32(reader["Port"].ToString())
+                                    , Convert.ToBoolean(reader["IsAllFile"]), Convert.ToBoolean(reader["IsDelete"]));
+                }
             }
         }
 
-        private void Ftp(string url, string userName, string password, string ftpPath, string localPath, bool isUpload)
+        private void Ftp(string url, string userName, string password, string ftpPath, string localPath, bool isUpload, bool IsAllFile, bool IsDelete)
         {
             FtpClient client = new FtpClient(url);
             client.Credentials = new NetworkCredential(userName, password);
             client.Connect();
 
-            if (isUpload)
+            string folderBKSuccess = FolderBK + "Success";
+            string folderBKFail = FolderBK + "Fail";
+            if (!Directory.Exists(folderBKSuccess))
+                Directory.CreateDirectory(folderBKSuccess);
+            if (!Directory.Exists(folderBKFail))
+                Directory.CreateDirectory(folderBKFail);
+            string ftpPathNew = ftpPath;
+
+            if (IsAllFile)
             {
-                client.RetryAttempts = 3;
-                client.Upload(File.OpenRead(localPath), ftpPath, FtpRemoteExists.Overwrite);
+                List<string> lstFile = Directory.GetFiles(localPath,"*.*", SearchOption.AllDirectories).ToList();
+                foreach(string file in lstFile)
+                {
+                    try
+                    {
+                        FileInfo fi = new FileInfo(file);
+                        ftpPathNew = ftpPath + fi.Name;
+                        FileStream fs = new FileStream(file, FileMode.OpenOrCreate);
+                        if (isUpload)
+                        {
+                            client.RetryAttempts = 3;
+                            client.Upload(fs, ftpPathNew, FtpRemoteExists.Overwrite);
+                            fs.Close();
+
+                            //delete and bk file
+                            if (IsDelete) File.Move(file, folderBKSuccess + "\\" + Path.GetFileName(file), true);
+                            else File.Copy(file, folderBKSuccess + "\\" + Path.GetFileName(file), true);
+                        }
+                        else
+                        {
+                            MemoryStream stream = new MemoryStream();
+                            if (client.FileExists(ftpPathNew))
+                            {
+                                client.Download(stream, ftpPathNew);
+                            }
+                            using (BinaryReader reader = new BinaryReader(stream))
+                            {
+                                using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(file)))
+                                   {
+                                    Transfer(reader, writer);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("IMEXApp fail at job {0} - step {1} Error: {2}", job, step, e.Message);
+                        Utility.ExecuteNonQuery("SMS_InsertMsg",
+                            "84",
+                            "0989989674",
+                            string.Format("SGNA03: Job fail at job {0} - step {1}", job, step),
+                            "SGNA03");
+                        Utility.ExecuteNonQuery("EMS_Insert",
+                            "Blue Ocean SGN/SGN/DKSH",
+                            "Dong Dinh Nguyen/SGN/DKSH@DKSH",
+                            "", "",
+                            string.Format("IMEXApp fail at job {0} - step {1}", job, step),
+                            e.Message.Replace('\'', ' '), "");
+                    }
+                }
             }
             else
             {
-                MemoryStream stream = new MemoryStream();
-                if (client.FileExists(ftpPath))
+                try
                 {
-                    client.Download(stream, ftpPath);
-                }
-                using (BinaryReader reader = new BinaryReader(stream))
-                {
-                    using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(localPath)))
+                    FileStream fs = new FileStream(localPath, FileMode.OpenOrCreate);
+                    if (isUpload)
                     {
-                        Transfer(reader, writer);
+                        client.RetryAttempts = 3;
+                        client.Upload(fs, ftpPathNew, FtpRemoteExists.Overwrite);
+                        fs.Close();
+
+                        //delete and bk file
+                        if (IsDelete) File.Move(localPath, folderBKSuccess + "\\" + Path.GetFileName(localPath), true);
+                        else File.Copy(localPath, folderBKSuccess + "\\" + Path.GetFileName(localPath), true);
+                    }
+                    else
+                    {
+                        MemoryStream stream = new MemoryStream();
+                        if (client.FileExists(ftpPathNew))
+                        {
+                            client.Download(stream, ftpPathNew);
+                        }
+                        using (BinaryReader reader = new BinaryReader(stream))
+                        {
+                            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(localPath)))
+                            {
+                                Transfer(reader, writer);
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("IMEXApp fail at job {0} - step {1} Error: {2}", job, step, e.Message);
+                    Utility.ExecuteNonQuery("SMS_InsertMsg",
+                        "84",
+                        "0989989674",
+                        string.Format("SGNA03: Job fail at job {0} - step {1}", job, step),
+                        "SGNA03");
+                    Utility.ExecuteNonQuery("EMS_Insert",
+                        "Blue Ocean SGN/SGN/DKSH",
+                        "Dong Dinh Nguyen/SGN/DKSH@DKSH",
+                        "", "",
+                        string.Format("IMEXApp fail at job {0} - step {1}", job, step),
+                        e.Message.Replace('\'', ' '), "");
+                }
+            }
+        }
+
+        private void Sftp(string url, string userName, string password, string ftpPath, string localPath, bool isUpload, string Fingerprint, int port, bool IsAllFile, bool IsDelete)
+        {
+            SessionOptions sessionOptions = new SessionOptions
+            {
+                Protocol = Protocol.Sftp,
+                HostName = url,
+                UserName = userName,
+                Password = password,
+                SshHostKeyFingerprint = Fingerprint,
+                PortNumber = port
+            };
+
+            string folderBKSuccess = FolderBK + "Success";
+            string folderBKFail = FolderBK + "Fail";
+            if (!Directory.Exists(folderBKSuccess))
+                Directory.CreateDirectory(folderBKSuccess);
+            if (!Directory.Exists(folderBKFail))
+                Directory.CreateDirectory(folderBKFail);
+            string ftpPathNew = ftpPath;
+
+            using (Session session = new Session())
+            {
+                // Connect
+                session.Open(sessionOptions);
+                if (IsAllFile)
+                {
+                    List<string> lstFile = Directory.GetFiles(localPath, "*.*", SearchOption.AllDirectories).ToList();
+                    foreach (string file in lstFile)
+                    {
+                        try
+                        {
+                            FileInfo fi = new FileInfo(file);
+                            ftpPathNew = ftpPath + fi.Name;
+                            if (isUpload)
+                            {
+                                session.PutFiles(file, ftpPathNew);
+
+                                //delete and bk file
+                                if (IsDelete) File.Move(file, folderBKSuccess + "\\" + Path.GetFileName(file), true);
+                                else File.Copy(file, folderBKSuccess + "\\" + Path.GetFileName(file), true);
+                            }
+                            else
+                            {
+                                session.GetFiles(ftpPathNew, file);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine("IMEXApp fail at job {0} - step {1} Error: {2}", job, step, e.Message);
+                            Utility.ExecuteNonQuery("SMS_InsertMsg",
+                                "84",
+                                "0989989674",
+                                string.Format("SGNA03: Job fail at job {0} - step {1}", job, step),
+                                "SGNA03");
+                            Utility.ExecuteNonQuery("EMS_Insert",
+                                "Blue Ocean SGN/SGN/DKSH",
+                                "Dong Dinh Nguyen/SGN/DKSH@DKSH",
+                                "", "",
+                                string.Format("IMEXApp fail at job {0} - step {1}", job, step),
+                                e.Message.Replace('\'', ' '), "");
+                        }
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        if (isUpload)
+                        {
+                            session.PutFiles(localPath, ftpPathNew);
+
+                            //delete and bk file
+                            if (IsDelete) File.Move(localPath, folderBKSuccess + "\\" + Path.GetFileName(localPath), true);
+                            else File.Copy(localPath, folderBKSuccess + "\\" + Path.GetFileName(localPath), true);
+                        }
+                        else
+                        {
+                            session.GetFiles(ftpPathNew, localPath);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("IMEXApp fail at job {0} - step {1} Error: {2}", job, step, e.Message);
+                        Utility.ExecuteNonQuery("SMS_InsertMsg",
+                            "84",
+                            "0989989674",
+                            string.Format("SGNA03: Job fail at job {0} - step {1}", job, step),
+                            "SGNA03");
+                        Utility.ExecuteNonQuery("EMS_Insert",
+                            "Blue Ocean SGN/SGN/DKSH",
+                            "Dong Dinh Nguyen/SGN/DKSH@DKSH",
+                            "", "",
+                            string.Format("IMEXApp fail at job {0} - step {1}", job, step),
+                            e.Message.Replace('\'', ' '), "");
                     }
                 }
             }
@@ -288,7 +488,7 @@ namespace MAISONApp
                     InsertDataIntoSQLServerUsingSQLBulkCopy(dtSource, destConn, destData);
 
                     //delete and bk file
-                    File.Move(file, folderBKSuccess + "\\" + Path.GetFileName(file));
+                    File.Move(file, folderBKSuccess + "\\" + Path.GetFileName(file), true);
                 }
                 catch (Exception e)
                 {
@@ -304,7 +504,7 @@ namespace MAISONApp
                         "", "",
                         string.Format("IMEXApp fail at job {0} - step {1}", job, step),
                         e.Message.Replace('\'', ' '), "");
-                    File.Move(file, folderBKFail + "\\" + Path.GetFileName(file));
+                    File.Move(file, folderBKFail + "\\" + Path.GetFileName(file), true);
                 }
             }
         }
@@ -347,29 +547,37 @@ namespace MAISONApp
             DataSet ds = Utility.ExecuteDataSet("IMEX_FlatFile_GetList", job, step);
             foreach (DataRow reader in ds.Tables[0].Rows)
             {
-                string strExten = Convert.ToString(reader["DestFile"]).Split('.').Last();
+                string strExten = Convert.ToString(reader["Extensions"]);
                 List<string> lstSourceSQL = ReplaceParameter(reader["SourceSQL"].ToString());
+                int i = 1;
                 foreach (string strSourceSQL in lstSourceSQL)
                 {
-                    if (strExten.ToUpper() == "CSV")
+                    string DestFile = Convert.ToString(reader["DestFile"]) + "." + strExten;
+                    if (i > 1) DestFile = DestFile.Replace(".", "_" + i + ".");
+                    if (strExten.ToUpper() == "CSV" || strExten.ToUpper() == "TXT")
                     {
                         FlatFileCSV(Convert.ToString(reader["SourceConn"]), Convert.ToString(reader["SourceData"])
-                            , strSourceSQL, Convert.ToString(reader["DestFile"]));
+                            , strSourceSQL, DestFile, Convert.ToBoolean(reader["IsHeader"])
+                                , string.IsNullOrEmpty(Convert.ToString(reader["FormatType"]))? "\t" : Convert.ToString(reader["FormatType"])
+                                    , Convert.ToBoolean(reader["IsFileName"]));
                     }
                     else
                     {
                         FlatFileExcel(Convert.ToString(reader["SourceConn"]), Convert.ToString(reader["SourceData"])
-                            , strSourceSQL, Convert.ToString(reader["DestFile"]));
+                            , strSourceSQL, DestFile);
                     }
+                    i++;
                 }
             }
         }
 
-        private void FlatFileCSV(string sourceConn, string sourceData, string sourceSQL, string destFile)
+        private void FlatFileCSV(string sourceConn, string sourceData, string sourceSQL, string destFile, bool IsHeader, string FormatType, bool IsFileName)
         {
             string dir = Path.GetDirectoryName(destFile);
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
+            string fileName = string.Empty;
+            bool isNewName = false;
             using (SqlConnection srcConn = new SqlConnection(string.Format(sourceConn, sourceData)))
             {
                 SqlCommand srcCmd = new SqlCommand(sourceSQL, srcConn);
@@ -382,22 +590,48 @@ namespace MAISONApp
                     {
                         int i = 0;
                         List<string> list = new List<string>();
-                        for (; i < reader.FieldCount; i++)
+                        int fieldCount = reader.FieldCount;
+                        for (; i < fieldCount; i++)
                         {
+                            if (reader.GetName(i).ToUpper() == "@FILENAME")
+                            {
+                                isNewName = true;
+                            }
                             list.Add(reader.GetName(i));
                         }
-                        writer.WriteLine(string.Join("\t", list.ToArray()));
+                        if (IsHeader)
+                        {
+                            writer.WriteLine(string.Join(FormatType, list.ToArray()));
+                        }
                         while (reader.Read())
                         {
-                            for (i = 0; i < reader.FieldCount; i++)
+                            for (i = 0; i < fieldCount; i++)
                             {
                                 list[i] = reader[i].ToString();
                             }
-                            writer.WriteLine(string.Join("\t", list.ToArray()));
+                            if (isNewName)
+                            {
+                                fileName = list[i - 1];
+                                if (!IsFileName)
+                                {
+                                    list.Remove(list[i - 1]);
+                                    fieldCount--;
+                                }
+                                isNewName = false;
+                            }
+                            writer.WriteLine(string.Join(FormatType, list.ToArray()));
                         }
                     }
                 }
                 srcConn.Close();
+            }
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                FileInfo fi = new FileInfo(destFile);
+                if (fi.Exists)
+                {
+                    fi.MoveTo(destFile.Replace(fi.Name, (fi.Name.Contains("Temp") ? "" : (Path.GetFileNameWithoutExtension(destFile))) + fileName), true);
+                }
             }
         }
 
@@ -532,20 +766,23 @@ namespace MAISONApp
             foreach (string strParam in arrString)
             {
                 string strParamTrim = strParam.Trim('\'');
-                if (strParamTrim.Substring(0, 1) == "@")
+                foreach (string obj in strParamTrim.Split(','))
                 {
-                    lstField.Add(strParamTrim);
-                }
-                else if (strParamTrim.Substring(0, 1) == "$")
-                {
-                    lstCos.Add(strParamTrim);
+                    if (obj.Substring(0, 1) == "@")
+                    {
+                        lstField.Add(obj.Trim());
+                    }
+                    else if (obj.Substring(0, 1) == "$")
+                    {
+                        lstCos.Add(obj.Trim());
+                    }
                 }
             }
 
             foreach (string strField in lstField.Distinct())
             {
                 string strRep = ds.Tables[0].Select("Field = '" + strField + "'").FirstOrDefault()["Value"].ToString();
-                input = input.Replace(strField, strRep);
+                input = input.Replace(strField, "'" + (strRep.ToUpper() == "GETDATE()" ? DateTime.Now.ToString("yyyy-MM-dd") : strRep) + "'");
             }
 
             foreach (string strCos in lstCos.Distinct())
@@ -559,7 +796,7 @@ namespace MAISONApp
                         List<DataRow> lstDR = ds.Tables[0].Select("Field = '" + strCos + "'").ToList();
                         foreach (DataRow dr in lstDR)
                         {
-                            arrLstResult[x, j] = arrLstResult[x - 1, i].Replace(strCos, dr["Value"].ToString());
+                            arrLstResult[x, j] = arrLstResult[x - 1, i].Replace(strCos, "'" + (dr["Value"].ToString().ToUpper() == "GETDATE()" ? DateTime.Now.Date.ToString() : dr["Value"].ToString()) + "'");
                             j++;
                         }
                         z += j;
@@ -572,7 +809,7 @@ namespace MAISONApp
                     List<DataRow> lstDR = ds.Tables[0].Select("Field = '" + strCos + "'").ToList();
                     foreach (DataRow dr in lstDR)
                     {
-                        arrLstResult[x, y] = input.Replace(strCos, dr["Value"].ToString());
+                        arrLstResult[x, y] = input.Replace(strCos, "'" + (dr["Value"].ToString().ToUpper() == "GETDATE()" ? DateTime.Now.Date.ToString() : dr["Value"].ToString()) + "'");
                         y++;
                     }
                     x++;

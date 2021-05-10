@@ -1,11 +1,14 @@
-USE [CKDATA]
+USE [CKDATA];
 GO
 
-IF EXISTS ( SELECT  *
-            FROM    sys.objects
-           WHERE   type = 'P'
-                   AND name = 'GetDataAPI_Footfall' )
-   DROP PROCEDURE GetDataAPI_Footfall;
+IF EXISTS
+(
+    SELECT *
+    FROM sys.objects
+    WHERE type = 'P'
+          AND name = 'GetDataAPI_Footfall'
+)
+    DROP PROCEDURE GetDataAPI_Footfall;
 GO
 CREATE PROCEDURE [dbo].[GetDataAPI_Footfall]
 AS
@@ -28,19 +31,22 @@ BEGIN
                           ELSE
                               -7
                       END;
-    DECLARE @_ToDate DATETIME = DATEADD(DAY, @_DayAdd, GETDATE());
-    DECLARE @_FromDate DATETIME = DATEADD(DAY, -6, @_ToDate);
+    DECLARE @_ToDate DATETIME = CONVERT(DATE, DATEADD(DAY, @_DayAdd, GETDATE()));
+    DECLARE @_FromDate DATETIME = CONVERT(DATE, DATEADD(DAY, -6, @_ToDate));
 
-    SELECT DISTINCT
-           'VietNam' AS 'Country',
-           FORMAT(TrafficDate, 'yyyy/MM/dd') 'Date',
+    SELECT 'VietNam' AS 'Country',
+           FORMAT(TrafficDate, 'yyyy-MM-dd') 'Date',
            CK_Store.ShopNo AS 'LocationCode',
-           InCount AS 'Incoming'
+           SUM(InCount) AS 'Incoming'
     FROM [10.8.1.114].MS_DW_STAGE.dbo.API_Footfall
-        LEFT JOIN dbo.CK_Store
-            ON CK_Store.StoreCode = API_Footfall.ShopNo
+        JOIN dbo.CK_Store
+            ON CK_Store.StoreCode LIKE '%' + API_Footfall.ShopNo + '%'
+               AND Active = 1
     WHERE CONVERT(DATE, TrafficDate)
-    BETWEEN @_FromDate AND @_ToDate;
+          BETWEEN @_FromDate AND @_ToDate
+          AND DATEPART(HOUR, TrafficDate) >= 8
+    GROUP BY FORMAT(TrafficDate, 'yyyy-MM-dd'),
+             CK_Store.ShopNo;
 
 END;
 GO

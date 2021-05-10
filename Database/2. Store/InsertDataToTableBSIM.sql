@@ -10,30 +10,15 @@ GO
 CREATE PROCEDURE [dbo].[InsertDataToTableBSIM]
 AS
 BEGIN
-
-    DECLARE @_MinDate DATETIME2;
-    DECLARE @_MaxDate DATETIME2;
-
-    SELECT @_MinDate = CASE
-                           WHEN MIN(CONVERT(DATE, sim.BUDAT, 104)) < MIN(CONVERT(DATE, sim.BLDAT, 104)) THEN
-                               MIN(CONVERT(DATE, sim.BUDAT, 104))
-                           ELSE
-                               MIN(CONVERT(DATE, sim.BLDAT, 104))
-                       END,
-           @_MaxDate = CASE
-                           WHEN MAX(CONVERT(DATE, sim.BUDAT, 104)) > MAX(CONVERT(DATE, sim.BLDAT, 104)) THEN
-                               MAX(CONVERT(DATE, sim.BUDAT, 104))
-                           ELSE
-                               MAX(CONVERT(DATE, sim.BLDAT, 104))
-                       END
-    FROM dbo.TMP_DT0_bsim sim;
+    DECLARE @_LastDayOfLastMonth DATETIME = CONVERT(DATE, DATEADD(d, - (DAY(GETDATE())), GETDATE()));
 
     DELETE sim
     FROM dbo.SAP_DT0_bsim sim
-    WHERE CONVERT(DATE, sim.BUDAT, 104)
-          BETWEEN @_MinDate AND @_MaxDate
-          OR CONVERT(DATE, sim.BLDAT, 104)
-          BETWEEN @_MinDate AND @_MaxDate;
+        JOIN dbo.TMP_DT0_bsim t
+            ON t.MATNR = sim.MATNR
+               AND t.BWKEY = sim.BWKEY
+               AND t.BUDAT = sim.BUDAT
+               AND t.BLDAT = sim.BLDAT;
 
     INSERT INTO dbo.SAP_DT0_bsim
     (
@@ -68,5 +53,5 @@ BEGIN
            BLART
     FROM dbo.TMP_DT0_bsim;
 
-	TRUNCATE TABLE dbo.TMP_DT0_bsim;
+    TRUNCATE TABLE dbo.TMP_DT0_bsim;
 END;
