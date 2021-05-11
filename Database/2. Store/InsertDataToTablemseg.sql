@@ -68,7 +68,8 @@ BEGIN
         LFBNR,
         XAUTO
     )
-    SELECT MBLNR,
+    SELECT DISTINCT
+           MBLNR,
            MJAHR,
            ZEILE,
            LINE_ID,

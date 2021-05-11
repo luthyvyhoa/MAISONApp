@@ -758,7 +758,7 @@ namespace MAISONApp
             DataSet ds = Utility.ExecuteDataSet("SELECT * FROM dbo.IMEX_Parameter");
             int x = 0;
             int y = 0;
-            string[,] arrLstResult = new string[10, 100];
+            string[,] arrLstResult = new string[10, 100000];
             string[] arrString = input.Split(' ');
             List<string> lstCos = new List<string>();
             List<string> lstField = new List<string>();
@@ -792,14 +792,12 @@ namespace MAISONApp
                     int z = 0;
                     for (int i = 0; i < y; i++)
                     {
-                        int j = 0;
                         List<DataRow> lstDR = ds.Tables[0].Select("Field = '" + strCos + "'").ToList();
                         foreach (DataRow dr in lstDR)
                         {
-                            arrLstResult[x, j] = arrLstResult[x - 1, i].Replace(strCos, "'" + (dr["Value"].ToString().ToUpper() == "GETDATE()" ? DateTime.Now.Date.ToString() : dr["Value"].ToString()) + "'");
-                            j++;
+                            arrLstResult[x, z] = arrLstResult[x - 1, i].Replace(strCos, "'" + (dr["Value"].ToString().ToUpper() == "GETDATE()" ? DateTime.Now.Date.ToString() : dr["Value"].ToString()) + "'");
+                            z++;
                         }
-                        z += j;
                     }
                     y = z;
                     x++;

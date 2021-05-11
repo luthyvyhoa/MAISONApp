@@ -37,7 +37,7 @@ BEGIN
 
     SELECT SUBSTRING(sim.MATNR, PATINDEX('%[^0]%', sim.MATNR + '.'), LEN(sim.MATNR)) 'ItemNumber',
            sim.WERKS 'Warehouse',
-		   cs.ShopNo 'StoreName',
+           cs.ShopNo 'StoreName',
            SUM(   CASE
                       WHEN sim.SHKZG = 'H' THEN
                           -1
@@ -65,15 +65,17 @@ BEGIN
         JOIN dbo.CK_Store cs
             ON cs.StoreCode = sim.WERKS
                AND cs.Active = 1
-    WHERE CONVERT(DATE, sim.HSDAT, 104)
-    BETWEEN @_FirstDayOfMonth AND @_ToDate
+    WHERE SUBSTRING(sim.MBLNR, 0, 1) <> '5'
+          AND sim.BWART <> '101'
+          AND CONVERT(DATE, sim.HSDAT, 104)
+          BETWEEN @_FirstDayOfMonth AND @_ToDate
     GROUP BY sim.MATNR,
              sim.WERKS,
-			 cs.ShopNo;
+             cs.ShopNo;
 
     SELECT SUBSTRING(mbe.MATNR, PATINDEX('%[^0]%', mbe.MATNR + '.'), LEN(mbe.MATNR)) 'ItemNumber',
            mbe.BWKEY 'Warehouse',
-		   cs.ShopNo 'StoreName',
+           cs.ShopNo 'StoreName',
            ISNULL(
                      CASE
                          WHEN CHARINDEX('-', mbe.SALK3) > 0 THEN
@@ -157,12 +159,12 @@ BEGIN
     (
         SELECT Warehouse,
                ItemNumber,
-			   StoreName
+               StoreName
         FROM #tmpSAP_DT0_bsim
         UNION
         SELECT Warehouse,
                ItemNumber,
-			   StoreName
+               StoreName
         FROM #tmpUSE_DT0_mbewh
     ) abc;
 
@@ -246,12 +248,13 @@ BEGIN
     FROM #tmpResult3 pr
         LEFT JOIN #tmpAliasNumber an
             ON pr.ItemNumber = an.ItemNumber
-               AND pr.Company = an.Company
-    WHERE pr.Warehouse = '1021'
-          AND an.ItemNumber = '100115585002';
-    SELECT *
-    FROM #tmpProductRSF
-    WHERE Warehouse = 'D111';
+               AND pr.Company = an.Company;
+    --WHERE pr.Warehouse = '1021'
+    --      AND an.ItemNumber = '100115585002';
+
+    --SELECT *
+    --FROM #tmpResult3
+    --WHERE Warehouse = 'D111' AND ItemNumber = '1004043708205';
 
     DROP TABLE #tmpSAP_DT0_bsim;
     DROP TABLE #tmpUSE_DT0_mbewh;
