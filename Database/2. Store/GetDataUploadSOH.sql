@@ -254,7 +254,7 @@ BEGIN
 
     --SELECT *
     --FROM #tmpResult3
-    --WHERE Warehouse = 'D111' AND ItemNumber = '1004043708205';
+    --WHERE Warehouse = '1029' AND ItemNumber = '1004043708205';
 
     DROP TABLE #tmpSAP_DT0_bsim;
     DROP TABLE #tmpUSE_DT0_mbewh;

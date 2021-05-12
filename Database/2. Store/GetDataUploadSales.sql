@@ -296,6 +296,7 @@ BEGIN
     FROM #tmpResult2 pr
         JOIN dbo.CK_Store cs
             ON cs.StoreCode LIKE '%' + pr.Warehouse + '%'
+			AND cs.Active = 1
         LEFT JOIN #tmpAliasNumber an
             ON pr.ItemNumber = an.ItemNumber
                AND pr.Company = an.Company;
@@ -324,13 +325,10 @@ BEGIN
             ON co.Company = pr.Company
                AND co.ItemNumber = pr.ItemNumber
                AND co.Warehouse = pr.Warehouse
-        JOIN #tmpSAP_DT0_Order p
+        LEFT JOIN #tmpSAP_DT0_Order p
             ON p.ItemNumber = co.ItemNumber
                AND co.Warehouse = p.Warehouse
                AND CONVERT(NVARCHAR(2000), co.InvoiceNumber) = p.InvoiceNumber
-    --WHERE pr.ItemNumber = '100152974001'
-    --      AND pr.Warehouse = '99M1'
-    --      AND co.InvoiceNumber = '161074751'
     UNION
     SELECT 'Vietnam' AS 'Country',
            FORMAT(CONVERT(DATE, CONVERT(NVARCHAR, sr.CreateDate), 112), 'yyyy/MM/dd') AS 'Date',
@@ -356,13 +354,10 @@ BEGIN
             ON sr.Company = pr.Company
                AND sr.ReturnItemNumber = pr.ItemNumber
                AND sr.Warehouse = pr.Warehouse
-        JOIN #tmpSAP_DT0_Order p
+        LEFT JOIN #tmpSAP_DT0_Order p
             ON p.ItemNumber = pr.ItemNumber
                AND pr.Warehouse = p.Warehouse
                AND CONVERT(NVARCHAR(2000), sr.SalesReturnNumber) = p.InvoiceNumber;
-    --WHERE pr.ItemNumber = '100152974001'
-    --      AND pr.Warehouse = '99M1'
-    --      AND sr.SalesReturnNumber = '';
 
     DROP TABLE #tmpSAP_DT0_vbrk;
     DROP TABLE #tmpSAP_DT0_vbrp;
